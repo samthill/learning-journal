@@ -101,7 +101,7 @@ var isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
 /* ------------------------------------------------------------------------------------------------ */
 
 
-$(document).ready(function() {
+document.addEventListener('DOMContentLoaded', function() {
   setlocalStorageItem();
   getSectionsfromLocalStorage();
   initialProcessNotes();
@@ -151,21 +151,48 @@ function initialProcessNotes(  ) {
 function addEvents() {
 
   // fire processNotes when the url changes
-  function hashchanged(){
-    processNotes();
-  }
-  window.addEventListener("hashchange", hashchanged, false);
-
+  window.addEventListener("hashchange", processNotes, false);
   // fire processNotes when the CONTINUE button is clicked and new blocks are dynamically added
-  function nodeadded(event) {
-    if( event.relatedNode.nodeName == "SECTION" ) {
-      if ( event.relatedNode.className == "blocks-lesson" ) {
-        processNotes();
+  function nodeadded(events) {
+    events.forEach(event => {
+      for(var i=0;i<event.addedNodes.length;i++)
+      {
+        if(event.target.classList.contains('block-statement__container')) 
+        {
+          processNotes();
+          onkeyupListener();
+        }
       }
-    }
-
+    })
+    // if( event.relatedNode.nodeName == "SECTION" && event.relatedNode.className == "blocks-lesson") processNotes();
   }
-  window.addEventListener("DOMNodeInserted", nodeadded, false);
+  const targetNode = document.getElementById('app');
+  const config = { childList: true, subtree: true };
+  const observer = new MutationObserver(nodeadded);
+  observer.observe(targetNode, config);
+}
+function onkeyupListener()
+{
+  // Set up autosave of journal entries to UserData and to localStorage
+  // see https://stackoverflow.com/questions/4220126/run-javascript-function-when-user-finishes-typing-instead-of-on-key-up?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+  const jresponse = document.querySelectorAll('.journalentry-response');
+  jresponse.forEach((element) => {
+    if(!element.dataset.hasKeyUp)
+    {
+      element.dataset.hasKeyUp = true;
+      element.addEventListener('keyup', (event) => {
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(function() {
+          const response = element.value;
+          const pNode = element.parentNode;
+          const sectionid = pNode.dataset.sectionid;
+          const entryid = pNode.dataset.entryid;
+          UserData.Sections[sectionid].entries[entryid].response = response;
+          setSectionstoLocalStorage();
+        }, doneTypingInterval);
+      });
+    }
+  });
 }
 
 
@@ -237,24 +264,23 @@ function getSectionsfromLocalStorage() {
 */
 function processNotes() {
 
-    var $notes = $( noteSelector);
+    var $notes = document.querySelectorAll(noteSelector);
     var returnValue = ($notes.length > 0) ? true : false ;
-
-    $notes.each( function() {
-      switch (this.querySelector(noteContentsSelector).firstChild.innerText.trim()) {
+    $notes.forEach((element) => {
+      switch (element.querySelector(noteContentsSelector).firstChild.innerText.trim()) {
         case flagEntry:
-          processEntry( this );
-          this.parentNode.removeChild(this);
+          processEntry( element );
+          element.parentNode.removeChild(element);
           break;
 
         case flagButtons:
-          processButtons( this);
-          this.parentNode.removeChild(this);
+          processButtons( element);
+          element.parentNode.removeChild(element);
           break;
 
         case flagIntro:
-          processIntro( this );
-          this.parentNode.removeChild(this);
+          processIntro( element );
+          element.parentNode.removeChild(element);
           break;
 
         default:
@@ -345,7 +371,11 @@ function renderEntrytoDOM( parentcontainer, entry, sectionid, entryid ) {
     container.appendChild(response);
     parentcontainer.appendChild(container);
 
-    $( ".block-statement--note:has( .journalentry-container)").addClass("block-statement--note-journalentry");
+
+    const elements = document.querySelectorAll(".block-statement--note:has( .journalentry-container)");
+    for (const element of elements) {
+      element.classList.add("block-statement--note-journalentry");
+    }
 }
 
 
@@ -515,23 +545,6 @@ function processIntro( note ) {
     return 0;
   }
 }
-
-
-// Set up autosave of journal entries to UserData and to localStorage
-// see https://stackoverflow.com/questions/4220126/run-javascript-function-when-user-finishes-typing-instead-of-on-key-up?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-$(document).on('keyup', '.journalentry-response', function(){
-    clearTimeout(typingTimer);
-    var myentrycontainer = this.parentNode;
-    typingTimer = setTimeout(function() {
-      var response = myentrycontainer.querySelector('.journalentry-response').value;
-      var sectionid = myentrycontainer.dataset.sectionid;
-      var entryid = myentrycontainer.dataset.entryid;
-      UserData.Sections[sectionid].entries[entryid].response = response;
-      setSectionstoLocalStorage();
-    }, doneTypingInterval);
-});
-
-
 /**
   * @desc prints the entries by opening a new browser window with a print button on it
   * @param bool TakeActionsOnly - are we printing all or simply Take Actions?
